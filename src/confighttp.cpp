@@ -229,31 +229,42 @@ void getTroubleshootingPage(resp_https_t response, req_https_t request) {
   response->write(header + content);
 }
 
-void getFaviconImage(resp_https_t response, req_https_t request) {
-  // todo - combine function with getSunshineLogoImage and possibly getNodeModules
-  // todo - use mime_types map
-  print_req(request);
-
-  std::ifstream in(WEB_DIR "images/favicon.ico", std::ios::binary);
-  SimpleWeb::CaseInsensitiveMultimap headers;
-  headers.emplace("Content-Type", "image/x-icon");
-  response->write(SimpleWeb::StatusCode::success_ok, in, headers);
-}
-
-void getSunshineLogoImage(resp_https_t response, req_https_t request) {
-  // todo - combine function with getFaviconImage and possibly getNodeModules
-  // todo - use mime_types map
-  print_req(request);
-
-  std::ifstream in(WEB_DIR "images/logo-sunshine-45.png", std::ios::binary);
-  SimpleWeb::CaseInsensitiveMultimap headers;
-  headers.emplace("Content-Type", "image/png");
-  response->write(SimpleWeb::StatusCode::success_ok, in, headers);
-}
-
 bool isChildPath(fs::path const &base, fs::path const &query) {
   auto relPath = fs::relative(base, query);
   return *(relPath.begin()) != fs::path("..");
+}
+
+void getImages(resp_https_t response, req_https_t request) {
+  print_req(request);
+  fs::path webDirPath(WEB_DIR);
+  fs::path imagesPath(webDirPath / "images");
+
+  // .relative_path is needed to shed any leading slash that might exist in the request path
+  auto filePath = fs::weakly_canonical(webDirPath / fs::path(request->path).relative_path());
+
+  // Don't do anything if file does not exist or is outside the images directory
+  if(!isChildPath(filePath, imagesPath)) {
+    BOOST_LOG(warning) << "Someone requested a path " << filePath << " that is outside the images folder";
+    response->write(SimpleWeb::StatusCode::client_error_bad_request, "Bad Request");
+  }
+  else if(!fs::exists(filePath)) {
+    response->write(SimpleWeb::StatusCode::client_error_not_found);
+  }
+  else {
+    auto relPath = fs::relative(filePath, webDirPath);
+    // get the mime type from the file extension mime_types map
+    // remove the leading period from the extension
+    auto mimeType = mime_types.find(relPath.extension().string().substr(1));
+    // check if the extension is in the map at the x position
+    if(mimeType != mime_types.end()) {
+      // if it is, set the content type to the mime type
+      SimpleWeb::CaseInsensitiveMultimap headers;
+      headers.emplace("Content-Type", mimeType->second);
+      std::ifstream in(filePath.string(), std::ios::binary);
+      response->write(SimpleWeb::StatusCode::success_ok, in, headers);
+    }
+    // do not return any file if the type is not in the map
+  }
 }
 
 void getNodeModules(resp_https_t response, req_https_t request) {
@@ -725,8 +736,7 @@ void start() {
   server.resource["^/api/clients/unpair$"]["POST"]         = unpairAll;
   server.resource["^/api/apps/close$"]["POST"]             = closeApp;
   server.resource["^/api/covers/upload$"]["POST"]          = uploadCover;
-  server.resource["^/images/favicon.ico$"]["GET"]          = getFaviconImage;
-  server.resource["^/images/logo-sunshine-45.png$"]["GET"] = getSunshineLogoImage;
+  server.resource["^/images\\/.+$"]["GET"]                 = getImages;
   server.resource["^/node_modules\\/.+$"]["GET"]           = getNodeModules;
   server.config.reuse_address                              = true;
   server.config.address                                    = "0.0.0.0"s;

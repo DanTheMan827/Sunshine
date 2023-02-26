@@ -69,7 +69,7 @@ source_suffix = ['.rst', '.md']
 # so a file named "default.css" will overwrite the builtin "default.css".
 # html_static_path = ['_static']
 
-html_logo = os.path.join(root_dir, 'sunshine.png')
+html_logo = os.path.join(root_dir, 'sunshine.svg')
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
